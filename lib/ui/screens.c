@@ -12,8 +12,6 @@
 
 objects_t objects;
 
-screen_main_state_t screen_main_state;
-
 //
 // Event handlers
 //
@@ -24,170 +22,58 @@ lv_obj_t *tick_value_change_obj;
 // Screens
 //
 
-lv_meter_indicator_t *meter_needle = NULL;
-
 void create_screen_main() {
-    screen_main_state_t *state = &screen_main_state;
-    (void)state;
     lv_obj_t *obj = lv_obj_create(0);
     objects.main = obj;
     lv_obj_set_pos(obj, 0, 0);
     lv_obj_set_size(obj, 320, 240);
+    lv_obj_set_style_bg_color(obj, lv_color_hex(0xc1e4ae), LV_PART_MAIN | LV_STATE_DEFAULT);
     {
         lv_obj_t *parent_obj = obj;
         {
-            lv_obj_t *obj = lv_tabview_create(parent_obj, LV_DIR_TOP, 32);
-            lv_obj_set_pos(obj, 0, 0);
-            lv_obj_set_size(obj, 320, 240);
+            lv_obj_t *obj = lv_label_create(parent_obj);
+            objects.obj0 = obj;
+            lv_obj_set_pos(obj, 80, 30);
+            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+            lv_obj_set_style_text_font(obj, &lv_font_montserrat_14, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_text_decor(obj, LV_TEXT_DECOR_NONE, LV_PART_MAIN | LV_STATE_CHECKED);
+            lv_obj_set_style_text_color(obj, lv_color_hex(0x212121), LV_PART_MAIN | LV_STATE_CHECKED);
+            lv_obj_set_style_text_font(obj, &lv_font_montserrat_14, LV_PART_MAIN | LV_STATE_CHECKED);
+            lv_label_set_text_static(obj, "Please select a user.");
+        }
+        {
+            // user1
+            lv_obj_t *obj = lv_btn_create(parent_obj);
+            objects.user1 = obj;
+            lv_obj_set_pos(obj, 88, 71);
+            lv_obj_set_size(obj, 147, 63);
+            lv_obj_set_style_bg_color(obj, lv_color_hex(0x96826d), LV_PART_MAIN | LV_STATE_DEFAULT);
             {
                 lv_obj_t *parent_obj = obj;
                 {
-                    // Control
-                    lv_obj_t *obj = lv_tabview_add_tab(parent_obj, "Control");
-                    objects.control = obj;
-                    {
-                        lv_obj_t *parent_obj = obj;
-                        {
-                            // motor_st
-                            lv_obj_t *obj = lv_led_create(parent_obj);
-                            objects.motor_st = obj;
-                            lv_obj_set_pos(obj, 220, 128);
-                            lv_obj_set_size(obj, 32, 32);
-                            lv_led_set_color(obj, lv_color_hex(0x0000ff));
-                            lv_led_set_brightness(obj, 255);
-                        }
-                        {
-                            // pwmpercent
-                            lv_obj_t *obj = lv_roller_create(parent_obj);
-                            objects.pwmpercent = obj;
-                            lv_obj_set_pos(obj, 9, 78);
-                            lv_obj_set_size(obj, 138, 100);
-                            lv_roller_set_options(obj, "20\n40\n60\n80\n100", LV_ROLLER_MODE_NORMAL);
-                        }
-                        {
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            lv_obj_set_pos(obj, 190, 102);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            lv_label_set_text_static(obj, "Moter Status");
-                        }
-                        {
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            lv_obj_set_pos(obj, 187, 13);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            lv_label_set_text_static(obj, "Value Control");
-                        }
-                        {
-                            // valve_bt
-                            lv_obj_t *obj = lv_btn_create(parent_obj);
-                            objects.valve_bt = obj;
-                            lv_obj_set_pos(obj, 186, 40);
-                            lv_obj_set_size(obj, 100, 50);
-                            lv_obj_set_style_bg_color(obj, lv_color_hex(0x0c8b2a), LV_PART_MAIN | LV_STATE_DEFAULT);
-                            {
-                                lv_obj_t *parent_obj = obj;
-                                {
-                                    lv_obj_t *obj = lv_label_create(parent_obj);
-                                    lv_obj_set_pos(obj, 0, 1);
-                                    lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                                    lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
-                                    lv_label_set_text_static(obj, "Open Value");
-                                }
-                            }
-                        }
-                        {
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            lv_obj_set_pos(obj, 9, 49);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            lv_label_set_text_static(obj, "OFF");
-                        }
-                        {
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            lv_obj_set_pos(obj, 107, 49);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            lv_label_set_text_static(obj, "ON");
-                        }
-                        {
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            lv_obj_set_pos(obj, 24, 13);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            lv_label_set_text_static(obj, "PWM Control");
-                        }
-                        {
-                            // sw_pump
-                            lv_obj_t *obj = lv_switch_create(parent_obj);
-                            objects.sw_pump = obj;
-                            lv_obj_set_pos(obj, 48, 44);
-                            lv_obj_set_size(obj, 50, 25);
-                        }
-                    }
+                    lv_obj_t *obj = lv_label_create(parent_obj);
+                    lv_obj_set_pos(obj, 0, 0);
+                    lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+                    lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+                    lv_label_set_text_static(obj, "User 1");
                 }
+            }
+        }
+        {
+            // user2
+            lv_obj_t *obj = lv_btn_create(parent_obj);
+            objects.user2 = obj;
+            lv_obj_set_pos(obj, 88, 150);
+            lv_obj_set_size(obj, 147, 63);
+            lv_obj_set_style_bg_color(obj, lv_color_hex(0x96826d), LV_PART_MAIN | LV_STATE_DEFAULT);
+            {
+                lv_obj_t *parent_obj = obj;
                 {
-                    lv_obj_t *obj = lv_tabview_add_tab(parent_obj, "Meter");
-                    {
-                        lv_obj_t *parent_obj = obj;
-                        {
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            lv_obj_set_pos(obj, 187, 124);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            lv_label_set_text_static(obj, "ADC34 Value");
-                        }
-                        {
-                            // adc34val
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.adc34val = obj;
-                            lv_obj_set_pos(obj, 187, 144);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            lv_label_set_text_static(obj, "0");
-                        }
-                        {
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            lv_obj_set_pos(obj, 38, 22);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            lv_label_set_text_static(obj, "ADC34 Gauge");
-                        }
-                        {
-                            // adc33val
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            objects.adc33val = obj;
-                            lv_obj_set_pos(obj, 271, -5);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            lv_label_set_text_static(obj, "0");
-                        }
-                        {
-                            // adc34meter
-                            lv_obj_t *obj = lv_meter_create(parent_obj);
-                            objects.adc34meter = obj;
-                            lv_obj_set_pos(obj, -1, 41);
-                            lv_obj_set_size(obj, 180, 180);
-                            {
-                                lv_meter_scale_t *scale = lv_meter_add_scale(obj);
-                                state->scale = scale;
-                                lv_meter_set_scale_ticks(obj, scale, 41, 1, 5, lv_color_hex(0xa0a0a0));
-                                lv_meter_set_scale_major_ticks(obj, scale, 8, 3, 10, lv_color_hex(0x000000), 10);
-                                lv_meter_set_scale_range(obj, scale, 0, 100, 300, 120);
-                                {
-                                    lv_meter_indicator_t *indicator = lv_meter_add_needle_line(obj, scale, 3, lv_color_hex(0xff6f3d), -28);
-                                    meter_needle = indicator;
-                                    state->indicator = indicator;
-                                    lv_meter_set_indicator_value(obj, indicator, 30);
-                                }
-                            }
-                        }
-                        {
-                            // adc33bar
-                            lv_obj_t *obj = lv_bar_create(parent_obj);
-                            objects.adc33bar = obj;
-                            lv_obj_set_pos(obj, 63, -2);
-                            lv_obj_set_size(obj, 201, 10);
-                            lv_bar_set_value(obj, 25, LV_ANIM_OFF);
-                        }
-                        {
-                            lv_obj_t *obj = lv_label_create(parent_obj);
-                            lv_obj_set_pos(obj, 7, -5);
-                            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-                            lv_label_set_text_static(obj, "ADC33");
-                        }
-                    }
+                    lv_obj_t *obj = lv_label_create(parent_obj);
+                    lv_obj_set_pos(obj, 0, 0);
+                    lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+                    lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+                    lv_label_set_text_static(obj, "User 2");
                 }
             }
         }
@@ -197,8 +83,6 @@ void create_screen_main() {
 }
 
 void tick_screen_main() {
-    screen_main_state_t *state = &screen_main_state;
-    (void)state;
 }
 
 typedef void (*tick_screen_func_t)();

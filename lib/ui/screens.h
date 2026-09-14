@@ -17,25 +17,11 @@ enum ScreensEnum {
 
 typedef struct _objects_t {
     lv_obj_t *main;
-    lv_obj_t *control;
-    lv_obj_t *motor_st;
-    lv_obj_t *pwmpercent;
-    lv_obj_t *valve_bt;
-    lv_obj_t *sw_pump;
-    lv_obj_t *adc34val;
-    lv_obj_t *adc33val;
-    lv_obj_t *adc34meter;
-    lv_obj_t *adc33bar;
+    lv_obj_t *user1;
+    lv_obj_t *user2;
 } objects_t;
 
 extern objects_t objects;
-
-typedef struct {
-    lv_meter_scale_t *scale;
-    lv_meter_indicator_t *indicator;
-} screen_main_state_t;
-
-extern screen_main_state_t screen_main_state;
 
 void create_screen_main();
 void tick_screen_main();

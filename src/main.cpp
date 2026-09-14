@@ -144,21 +144,11 @@ void setup()
 
         ui_init();
 
-        // ข้อ a: ควบคุม valve_bt
-        lv_obj_add_event_cb(objects.valve_bt, event_handler, LV_EVENT_ALL, pLED1);
+        // นำชื่อ Widget ที่ตั้งไว้ใน EEZ มาผูกกับ event_handler
+        lv_obj_add_event_cb(objects.user1, event_handler, LV_EVENT_ALL, NULL);
+        lv_obj_add_event_cb(objects.user2, event_handler, LV_EVENT_ALL, NULL);
 
-        // ข้อ b, c: สวิตช์ปั๊ม และ Roller
-        lv_obj_add_event_cb(objects.sw_pump, event_handler, LV_EVENT_VALUE_CHANGED, NULL);
-        lv_obj_add_event_cb(objects.pwmpercent, event_handler, LV_EVENT_VALUE_CHANGED, NULL);
-
-        // ข้อ d: Timer เช็คสวิตช์ปุ่มกด Pin 14 ทุก 300 ms (0.3 วินาที)
-        lv_timer_create(get_sw_state, 300, pSW1);
-
-        // ข้อ e: Timer อ่านค่า ADC Pin 33 ทุก 100 ms (0.1 วินาที)
-        lv_timer_create(get_adc33_state, 100, NULL);
-
-        // ข้อ f: Timer อ่านค่า ADC Pin 34 ทุก 200 ms (0.2 วินาที)
-        lv_timer_create(get_adc34_state, 200, NULL);
+        
     }
 }
 
