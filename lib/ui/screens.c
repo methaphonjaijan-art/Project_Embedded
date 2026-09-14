@@ -27,18 +27,15 @@ void create_screen_main() {
     objects.main = obj;
     lv_obj_set_pos(obj, 0, 0);
     lv_obj_set_size(obj, 320, 240);
-    lv_obj_set_style_bg_color(obj, lv_color_hex(0xc1e4ae), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(obj, lv_color_hex(0x93cd91), LV_PART_MAIN | LV_STATE_DEFAULT);
     {
         lv_obj_t *parent_obj = obj;
         {
             lv_obj_t *obj = lv_label_create(parent_obj);
-            objects.obj0 = obj;
-            lv_obj_set_pos(obj, 80, 30);
+            lv_obj_set_pos(obj, 88, 28);
             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
             lv_obj_set_style_text_font(obj, &lv_font_montserrat_14, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_text_decor(obj, LV_TEXT_DECOR_NONE, LV_PART_MAIN | LV_STATE_CHECKED);
-            lv_obj_set_style_text_color(obj, lv_color_hex(0x212121), LV_PART_MAIN | LV_STATE_CHECKED);
-            lv_obj_set_style_text_font(obj, &lv_font_montserrat_14, LV_PART_MAIN | LV_STATE_CHECKED);
             lv_label_set_text_static(obj, "Please select a user.");
         }
         {
@@ -55,7 +52,7 @@ void create_screen_main() {
                     lv_obj_set_pos(obj, 0, 0);
                     lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
                     lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
-                    lv_label_set_text_static(obj, "User 1");
+                    lv_label_set_text_static(obj, "EM01");
                 }
             }
         }
@@ -73,7 +70,7 @@ void create_screen_main() {
                     lv_obj_set_pos(obj, 0, 0);
                     lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
                     lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
-                    lv_label_set_text_static(obj, "User 2");
+                    lv_label_set_text_static(obj, "EM02");
                 }
             }
         }
@@ -85,12 +82,74 @@ void create_screen_main() {
 void tick_screen_main() {
 }
 
+void create_screen_password() {
+    lv_obj_t *obj = lv_obj_create(0);
+    objects.password = obj;
+    lv_obj_set_pos(obj, 0, 0);
+    lv_obj_set_size(obj, 320, 240);
+    lv_obj_set_style_bg_color(obj, lv_color_hex(0x93cd91), LV_PART_MAIN | LV_STATE_DEFAULT);
+    {
+        lv_obj_t *parent_obj = obj;
+        {
+            // text_p
+            lv_obj_t *obj = lv_textarea_create(parent_obj);
+            objects.text_p = obj;
+            lv_obj_set_pos(obj, 29, 44);
+            lv_obj_set_size(obj, 263, 39);
+            lv_textarea_set_max_length(obj, 128);
+            lv_textarea_set_one_line(obj, false);
+            lv_textarea_set_password_mode(obj, true);
+            lv_obj_set_style_bg_color(obj, lv_color_hex(0x96826d), LV_PART_MAIN | LV_STATE_DEFAULT);
+        }
+        {
+            lv_obj_t *obj = lv_label_create(parent_obj);
+            lv_obj_set_pos(obj, 59, 16);
+            lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+            lv_label_set_text_static(obj, "Please enter your password.");
+        }
+        {
+            // keyboard
+            lv_obj_t *obj = lv_keyboard_create(parent_obj);
+            objects.keyboard = obj;
+            lv_obj_set_pos(obj, 0, 98);
+            lv_obj_set_size(obj, 320, 142);
+            lv_keyboard_set_mode(obj, LV_KEYBOARD_MODE_NUMBER);
+            lv_obj_set_style_align(obj, LV_ALIGN_DEFAULT, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_bg_color(obj, lv_color_hex(0x93cd91), LV_PART_MAIN | LV_STATE_DEFAULT);
+        }
+        {
+            // back
+            lv_obj_t *obj = lv_btn_create(parent_obj);
+            objects.back = obj;
+            lv_obj_set_pos(obj, 0, 0);
+            lv_obj_set_size(obj, 40, 24);
+            {
+                lv_obj_t *parent_obj = obj;
+                {
+                    lv_obj_t *obj = lv_label_create(parent_obj);
+                    lv_obj_set_pos(obj, 0, 0);
+                    lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+                    lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+                    lv_label_set_text_static(obj, "Back");
+                }
+            }
+        }
+    }
+    lv_keyboard_set_textarea(objects.keyboard, objects.text_p);
+    
+    tick_screen_password();
+}
+
+void tick_screen_password() {
+}
+
 typedef void (*tick_screen_func_t)();
 tick_screen_func_t tick_screen_funcs[] = {
     tick_screen_main,
+    tick_screen_password,
 };
 void tick_screen(int screen_index) {
-    if (screen_index >= 0 && screen_index < 1) {
+    if (screen_index >= 0 && screen_index < 2) {
         tick_screen_funcs[screen_index]();
     }
 }
@@ -188,4 +247,5 @@ void create_screens() {
     // Initialize screens
     // Create screens
     create_screen_main();
+    create_screen_password();
 }
