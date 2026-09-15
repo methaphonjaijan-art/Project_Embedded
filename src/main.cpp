@@ -63,7 +63,7 @@ void setup()
     }
     gfx->fillScreen(BLACK);
 
-    // เริ่มต้นระบบตรวจวัดระยะเพื่อควบคุมแสงจอ
+    // เริ่มต้นระบบปรับแสงจอ (ตั้งต้นหรี่ 20%) และเซนเซอร์วัดระยะ
     backlight_sensor_init();
 
     touch_init(gfx->width(), gfx->height(), gfx->getRotation());
@@ -99,13 +99,28 @@ void setup()
     lv_obj_add_event_cb(objects.back, back_btn_event_handler, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(objects.keyboard, password_check_event_handler, LV_EVENT_READY, NULL);
 
-    // เริ่มต้นระบบกล่องพัสดุ (Servo 2 ตัว + IR 2 ตัว)
+    // เริ่มต้นระบบกล่องพัสดุ (Servo 2 ตัว + IR 2 ตัว + FreeRTOS LINE Task)
     box_init();
 
+    // เชื่อมต่อ Wi-Fi และรอยืนยันสถานะเพื่อความเสถียรในการส่ง LINE
     WiFi.mode(WIFI_STA);
     WiFi.setTxPower(WIFI_POWER_15dBm);
     WiFi.begin(ssid, password);
     Serial.print("Connecting to Wi-Fi");
+
+    int retry = 0;
+    while (WiFi.status() != WL_CONNECTED && retry < 20) {
+        delay(500);
+        Serial.print(".");
+        retry++;
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("\n[WiFi] Connected successfully!");
+        Serial.printf("[WiFi] IP Address: %s\n", WiFi.localIP().toString().c_str());
+    } else {
+        Serial.println("\n[WiFi] Connection timeout. Will keep retrying in background.");
+    }
 }
 
 void loop()
