@@ -87,9 +87,9 @@ void password_check_event_handler(lv_event_t *e)
 
             // ส่ง LINE แจ้งเตือน
             if (selected_user == 1) {
-                sendLine(uid_user1, "🔓 กล่องเปิดแล้ว: นำพัสดุออกเรียบร้อย (User 1)");
+                sendLine(uid_user1, "🔓 EM01: กล่องเปิดแล้ว! นำพัสดุออกเรียบร้อย");
             } else if (selected_user == 2) {
-                sendLine(uid_user2, "🔓 กล่องเปิดแล้ว: นำพัสดุออกเรียบร้อย (User 2)");
+                sendLine(uid_user2, "🔓 EM02: กล่องเปิดแล้ว! นำพัสดุออกเรียบร้อย");
             }
 
             // แสดงคำว่า PASS 1.5 วินาที แล้ว timer_success_cb จะพาไปหน้าหลักและดับจอดำสนิท
@@ -104,9 +104,9 @@ void password_check_event_handler(lv_event_t *e)
             lv_textarea_set_text(objects.text_p, "WRONG");
 
             if (selected_user == 1) {
-                sendLine(uid_user1, "⚠️ มีผู้พยายามใส่รหัสผ่านกล่องรับพัสดุของคุณ (EM01) ไม่ถูกต้อง!");
+                sendLine(uid_user1, "⚠️ EM01: มีผู้พยายามใส่รหัสผ่านกล่องรับพัสดุของคุณ!");
             } else if (selected_user == 2) {
-                sendLine(uid_user2, "⚠️ มีผู้พยายามใส่รหัสผ่านกล่องรับพัสดุของคุณ (EM02) ไม่ถูกต้อง!");
+                sendLine(uid_user2, "⚠️ EM01: มีผู้พยายามใส่รหัสผ่านกล่องรับพัสดุของคุณ!");
             }
 
             lv_timer_t *t = lv_timer_create(timer_wrong_cb, 1500, NULL);

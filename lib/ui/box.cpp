@@ -1,6 +1,3 @@
-
-//ไฟล์ box.cpp
-
 #include "box.h"
 #include "ui.h"
 #include <Arduino_GFX_Library.h>
@@ -53,19 +50,11 @@ bool is_full_brightness = false;
 static unsigned long last_ping_time = 0;
 static unsigned long unlock_cooldown_time = 0; // ตัวแปรหน่วงเวลาหลังปลดล็อกสำเร็จ
 
-
-
-static lv_obj_t *main_screen = NULL;  // ตัวแปรจำหน้าจอหลักของ UI
-static lv_obj_t *blank_screen = NULL; // หน้าจอสีดำสำหรับโหมด Sleep
-
-// อ้างอิง gfx จาก main.cpp
 extern Arduino_GFX *gfx;
-
 static lv_obj_t *black_screen = NULL;
 
 void set_screen_sleep(bool sleep)
 {
-    // สร้างหน้าจอดำสนิทเตรียมไว้ 1 หน้าจอ
     if (black_screen == NULL) {
         black_screen = lv_obj_create(NULL);
         lv_obj_set_style_bg_color(black_screen, lv_color_black(), 0);
@@ -73,14 +62,11 @@ void set_screen_sleep(bool sleep)
     }
 
     if (sleep) {
-        // สลับไปหน้าจอดำสนิททันที
         lv_scr_load(black_screen);
         Serial.println("[DISPLAY] Screen Sleeping (Black Screen Loaded)");
     } else {
-        // ดึงหน้าจอหลักจากอ็อบเจกต์ของ EEZ Studio (หน้าแรกที่มี user1)
         lv_obj_t *home_scr = lv_obj_get_screen(objects.user1);
         if (home_scr != NULL) {
-            // โหลดหน้าจอหลักกลับมา พร้อมอนิเมชันแบบ NONE เพื่อบังคับ Full Redraw
             lv_scr_load_anim(home_scr, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
             lv_obj_invalidate(home_scr);
             lv_refr_now(NULL);
@@ -91,8 +77,6 @@ void set_screen_sleep(bool sleep)
         Serial.println("[DISPLAY] Screen Woken Up (UI Reloaded)");
     }
 }
-
-
 
 // Background Task สำหรับส่ง LINE ป้องกันลูปสะดุดและ Handshake ล่ม
 void lineTask(void *pvParameters)
@@ -161,64 +145,50 @@ bool check_package(int box_number)
     return false;
 }
 
+// ล็อกกล่อง: หมุนไป 0 องศาโดยตรง ไม่ detach เพื่อไม่ให้สะบัด
 void lock_box(int box_number)
 {
     if (box_number == 1)
     {
-        servo1.attach(SERVO1_PIN, 500, 2500);
         servo1.write(0);
-        delay(600);           // รอให้เซอร์โวหมุนล็อกเข้าล็อกสนิท
-        servo1.detach();      // ปลดการควบคุมเพื่อคืน Timer ให้ Ultrasonic และหยุดกินไฟ
-
         box1_locked = true;
         ir1_waiting = false;
         Serial.println("\n>>> [BOX 1] LOCKED (Servo 0°) <<<");
-        sendLine(user1_id, "📦 EM01 : มีพัสดุมาส่งที่กล่องของคุณ กล่องปิดล็อกเรียบร้อย!");
+        sendLine(user1_id, "📦 EM01: มีพัสดุมาส่งที่กล่องของคุณ กล่องปิดล็อกเรียบร้อย!");
     }
     else if (box_number == 2)
     {
-        servo2.attach(SERVO2_PIN, 500, 2500);
         servo2.write(0);
-        delay(600);           // รอให้เซอร์โวหมุนล็อกเข้าล็อกสนิท
-        servo2.detach();      // ปลดการควบคุมเพื่อคืน Timer ให้ Ultrasonic และหยุดกินไฟ
-
         box2_locked = true;
         ir2_waiting = false;
         Serial.println("\n>>> [BOX 2] LOCKED (Servo 0°) <<<");
-        sendLine(user2_id, "📦 EM02 : มีพัสดุมาส่งที่กล่องของคุณ กล่องปิดล็อกเรียบร้อย!");
+        sendLine(user2_id, "📦 EM02: มีพัสดุมาส่งที่กล่องของคุณ กล่องปิดล็อกเรียบร้อย!");
     }
 }
 
+// ปลดล็อกกล่อง: หมุนไป 180 องศาโดยตรง ไม่ attach ซ้ำ เพื่อป้องกันการสะบัดไป 90 องศา
 void unlock_box(int user)
 {
     if (user == 1)
     {
-        servo1.attach(SERVO1_PIN, 500, 2500);
         servo1.write(180);
-        delay(600);
-        servo1.detach();
-
         box1_locked = false;
         ir1_waiting = false;
         ir1_start = 0;
         ir1_unseen_start = 0;
-        Serial.println("[BOX 1] Unlocked by User 1");
+        Serial.println("[BOX 1] Unlocked by User 1 (Hold at 180°)");
     }
     else if (user == 2)
     {
-        servo2.attach(SERVO2_PIN, 500, 2500);
         servo2.write(180);
-        delay(600);
-        servo2.detach();
-
         box2_locked = false;
         ir2_waiting = false;
         ir2_start = 0;
         ir2_unseen_start = 0;
-        Serial.println("[BOX 2] Unlocked by User 2");
+        Serial.println("[BOX 2] Unlocked by User 2 (Hold at 180°)");
     }
 
-    // ล็อกเวลาห้ามเซนเซอร์ปลุกจอเป็นเวลา 10 วินาที
+    // หน่วงเวลา 10 วินาที ไม่ให้เซนเซอร์วัดคนหยิบของแล้วเปิดจอซ้ำ
     unlock_cooldown_time = millis() + 10000;
     
     // บังคับสถานะจอดับทันที
@@ -240,19 +210,18 @@ void box_init()
     servo1.setPeriodHertz(50);
     servo2.setPeriodHertz(50);
 
-    // เปิดกล่องตอนเริ่มระบบ
-    servo1.attach(SERVO1_PIN, 500, 2500);
-    servo2.attach(SERVO2_PIN, 500, 2500);
+    // กำหนดช่วงพัลส์ 544 - 2400us มาตรฐาน และ attach ไว้ถาวร
+    servo1.attach(SERVO1_PIN, 544, 2400);
+    servo2.attach(SERVO2_PIN, 544, 2400);
+
+    // เปิดกล่องรอรับของที่ 180 องศา
     servo1.write(180);
     servo2.write(180);
-    delay(500);
-    servo1.detach();
-    servo2.detach();
 
     box1_locked = false;
     box2_locked = false;
 
-    Serial.println("[BOX] Dual Box Ready (Both Open)");
+    Serial.println("[BOX] Dual Box Ready (Both Open at 180°)");
 }
 
 void check_box()
@@ -316,17 +285,14 @@ void check_box()
     }
 }
 
-// --- ควบคุมการเริ่มต้นหน้าจอและ Ultrasonic ---
 void backlight_sensor_init()
 {
     pinMode(TRIG_PIN, OUTPUT);
     digitalWrite(TRIG_PIN, LOW);
     pinMode(ECHO_PIN, INPUT);
 
-    // ประมวลผลรอบแรกของ LVGL ให้เฟรมแรกเสร็จสมบูรณ์
     lv_timer_handler();
 
-    // ดับสนิทตั้งแต่เปิดเครื่องด้วยม่านดำ
     set_screen_sleep(true);
     is_full_brightness = false;
     last_detected_time = 0;
@@ -342,7 +308,6 @@ static long read_ultrasonic_distance()
     delayMicroseconds(10);
     digitalWrite(TRIG_PIN, LOW);
 
-    // ปรับ Timeout เป็น 30000us
     long duration = pulseIn(ECHO_PIN, HIGH, 30000);
     if (duration == 0) return 999;
 
