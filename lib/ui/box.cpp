@@ -1,7 +1,8 @@
+
 //ไฟล์ box.cpp
 
-
 #include "box.h"
+#include "ui.h"
 #include <Arduino_GFX_Library.h>
 #include <lvgl.h>
 #include <ESP32Servo.h>
@@ -48,42 +49,50 @@ static bool ir2_waiting = false;
 static unsigned long ir2_unseen_start = 0;
 
 static unsigned long last_detected_time = 0;
-static bool is_full_brightness = false;
+bool is_full_brightness = false;
 static unsigned long last_ping_time = 0;
+static unsigned long unlock_cooldown_time = 0; // ตัวแปรหน่วงเวลาหลังปลดล็อกสำเร็จ
 
-// อ้างอิง gfx จาก main.cpp
-extern Arduino_GFX *gfx;
+
 
 static lv_obj_t *main_screen = NULL;  // ตัวแปรจำหน้าจอหลักของ UI
 static lv_obj_t *blank_screen = NULL; // หน้าจอสีดำสำหรับโหมด Sleep
 
+// อ้างอิง gfx จาก main.cpp
+extern Arduino_GFX *gfx;
+
+static lv_obj_t *black_screen = NULL;
+
 void set_screen_sleep(bool sleep)
 {
-    // จำหน้าจอ UI หลักไว้ตอนที่ถูกเรียกครั้งแรก
-    if (main_screen == NULL) {
-        main_screen = lv_scr_act();
-    }
-
     // สร้างหน้าจอดำสนิทเตรียมไว้ 1 หน้าจอ
-    if (blank_screen == NULL) {
-        blank_screen = lv_obj_create(NULL);
-        lv_obj_set_style_bg_color(blank_screen, lv_color_black(), 0);
-        lv_obj_set_style_bg_opa(blank_screen, LV_OPA_COVER, 0);
+    if (black_screen == NULL) {
+        black_screen = lv_obj_create(NULL);
+        lv_obj_set_style_bg_color(black_screen, lv_color_black(), 0);
+        lv_obj_set_style_bg_opa(black_screen, LV_OPA_COVER, 0);
     }
 
     if (sleep) {
-        // สลับไปแสดงหน้าจอดำสนิททันที (UI หลักยังคงอยู่ใน RAM ไม่หาย)
-        lv_scr_load(blank_screen);
-        Serial.println("[DISPLAY] Screen Sleeping (Switched to Blank Screen)");
+        // สลับไปหน้าจอดำสนิททันที
+        lv_scr_load(black_screen);
+        Serial.println("[DISPLAY] Screen Sleeping (Black Screen Loaded)");
     } else {
-        // ปลุกคอนโทรลเลอร์จอ และสลับกลับมาหน้าจอ UI หลัก
-        gfx->displayOn();
-        if (main_screen != NULL) {
-            lv_scr_load(main_screen);
+        // ดึงหน้าจอหลักจากอ็อบเจกต์ของ EEZ Studio (หน้าแรกที่มี user1)
+        lv_obj_t *home_scr = lv_obj_get_screen(objects.user1);
+        if (home_scr != NULL) {
+            // โหลดหน้าจอหลักกลับมา พร้อมอนิเมชันแบบ NONE เพื่อบังคับ Full Redraw
+            lv_scr_load_anim(home_scr, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
+            lv_obj_invalidate(home_scr);
+            lv_refr_now(NULL);
         }
-        Serial.println("[DISPLAY] Screen Woken Up (UI Restored)");
+#ifdef CANVAS
+        gfx->flush();
+#endif
+        Serial.println("[DISPLAY] Screen Woken Up (UI Reloaded)");
     }
 }
+
+
 
 // Background Task สำหรับส่ง LINE ป้องกันลูปสะดุดและ Handshake ล่ม
 void lineTask(void *pvParameters)
@@ -156,7 +165,11 @@ void lock_box(int box_number)
 {
     if (box_number == 1)
     {
+        servo1.attach(SERVO1_PIN, 500, 2500);
         servo1.write(0);
+        delay(600);           // รอให้เซอร์โวหมุนล็อกเข้าล็อกสนิท
+        servo1.detach();      // ปลดการควบคุมเพื่อคืน Timer ให้ Ultrasonic และหยุดกินไฟ
+
         box1_locked = true;
         ir1_waiting = false;
         Serial.println("\n>>> [BOX 1] LOCKED (Servo 0°) <<<");
@@ -164,7 +177,11 @@ void lock_box(int box_number)
     }
     else if (box_number == 2)
     {
+        servo2.attach(SERVO2_PIN, 500, 2500);
         servo2.write(0);
+        delay(600);           // รอให้เซอร์โวหมุนล็อกเข้าล็อกสนิท
+        servo2.detach();      // ปลดการควบคุมเพื่อคืน Timer ให้ Ultrasonic และหยุดกินไฟ
+
         box2_locked = true;
         ir2_waiting = false;
         Serial.println("\n>>> [BOX 2] LOCKED (Servo 0°) <<<");
@@ -176,18 +193,37 @@ void unlock_box(int user)
 {
     if (user == 1)
     {
+        servo1.attach(SERVO1_PIN, 500, 2500);
         servo1.write(180);
+        delay(600);
+        servo1.detach();
+
         box1_locked = false;
         ir1_waiting = false;
+        ir1_start = 0;
+        ir1_unseen_start = 0;
         Serial.println("[BOX 1] Unlocked by User 1");
     }
     else if (user == 2)
     {
+        servo2.attach(SERVO2_PIN, 500, 2500);
         servo2.write(180);
+        delay(600);
+        servo2.detach();
+
         box2_locked = false;
         ir2_waiting = false;
+        ir2_start = 0;
+        ir2_unseen_start = 0;
         Serial.println("[BOX 2] Unlocked by User 2");
     }
+
+    // ล็อกเวลาห้ามเซนเซอร์ปลุกจอเป็นเวลา 10 วินาที
+    unlock_cooldown_time = millis() + 10000;
+    
+    // บังคับสถานะจอดับทันที
+    is_full_brightness = false;
+    set_screen_sleep(true);
 }
 
 void box_init()
@@ -204,11 +240,15 @@ void box_init()
     servo1.setPeriodHertz(50);
     servo2.setPeriodHertz(50);
 
+    // เปิดกล่องตอนเริ่มระบบ
     servo1.attach(SERVO1_PIN, 500, 2500);
     servo2.attach(SERVO2_PIN, 500, 2500);
-
     servo1.write(180);
     servo2.write(180);
+    delay(500);
+    servo1.detach();
+    servo2.detach();
+
     box1_locked = false;
     box2_locked = false;
 
@@ -297,12 +337,13 @@ void backlight_sensor_init()
 static long read_ultrasonic_distance()
 {
     digitalWrite(TRIG_PIN, LOW);
-    delayMicroseconds(4);
+    delayMicroseconds(5);
     digitalWrite(TRIG_PIN, HIGH);
     delayMicroseconds(10);
     digitalWrite(TRIG_PIN, LOW);
 
-    long duration = pulseIn(ECHO_PIN, HIGH, 25000);
+    // ปรับ Timeout เป็น 30000us
+    long duration = pulseIn(ECHO_PIN, HIGH, 30000);
     if (duration == 0) return 999;
 
     return (long)(duration * 0.034 / 2);
@@ -310,19 +351,29 @@ static long read_ultrasonic_distance()
 
 void check_proximity()
 {   
-    // เงื่อนไข 1: กล่องยังเปิดอยู่ทั้งคู่ บังคับม่านดำปิดเสมอ และไม่รัน Ultrasonic
+    // 1. ถ้ากล่องเปิดอยู่ทั้งคู่ -> บังคับดับจอ
     if (!box1_locked && !box2_locked)
     {
         if (is_full_brightness)
         {
             set_screen_sleep(true);
             is_full_brightness = false;
-            Serial.println("[DISPLAY] Both boxes open -> Force Screen Sleep");
         }
         return;
     }
 
-    // เงื่อนไข 2: มีกล่องล็อกแล้วอย่างน้อย 1 กล่อง เริ่มตรวจจับคนเดินเข้าใกล้
+    // 2. ถ้าเพิ่งกดเปิดกล่องสำเร็จ ยังไม่พ้น 10 วินาที -> บังคับดับจอ ห้ามปลุกเด็ดขาด
+    if (millis() < unlock_cooldown_time)
+    {
+        if (is_full_brightness)
+        {
+            set_screen_sleep(true);
+            is_full_brightness = false;
+        }
+        return;
+    }
+
+    // 3. เงื่อนไขปกติเมื่อมีกล่องล็อกค้างไว้ และพ้นระยะหน่วงเวลาแล้ว
     if (millis() - last_ping_time >= 200)
     {
         last_ping_time = millis();
@@ -330,25 +381,23 @@ void check_proximity()
 
         Serial.printf("[SONAR] Measured: %ld cm\n", distance);
 
-        // อยู่ในระยะ 5 ถึง 50 ซม. ปลดม่านดำแสดงผล UI
-        if (distance >= 5 && distance <= DETECT_DIST_CM)
+        if (distance >= 1 && distance <= DETECT_DIST_CM)
         {
             last_detected_time = millis();
             if (!is_full_brightness)
             {
-                set_screen_sleep(false);
                 is_full_brightness = true;
+                set_screen_sleep(false);
                 Serial.printf(">>> [PROXIMITY] Person detected at %ld cm -> Screen ON <<<\n", distance);
             }
         }
         else
         {
-            // เดินออกห่างเกิน 5 วินาที ดับหน้าจอกลับเป็นสีดำ
             if (is_full_brightness && (millis() - last_detected_time >= 5000))
             {
-                set_screen_sleep(true);
                 is_full_brightness = false;
-                Serial.println("[PROXIMITY] Person left -> Screen OFF (Blackout)");
+                set_screen_sleep(true);
+                Serial.println("[PROXIMITY] Person left -> Screen OFF");
             }
         }
     }

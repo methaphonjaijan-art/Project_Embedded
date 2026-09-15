@@ -4,9 +4,7 @@
 #include "src/misc/lv_ll.h"
 #include "box.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+extern void set_screen_sleep(bool sleep);
 
 int selected_user = 0;
 static bool is_processing = false;
@@ -18,7 +16,13 @@ static void timer_success_cb(lv_timer_t *timer)
 {
     lv_textarea_set_password_mode(objects.text_p, true);
     lv_textarea_set_text(objects.text_p, "");
-    lv_scr_load_anim(objects.main, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 300, 0, false);
+    
+    // โหลดหน้าหลักเตรียมไว้เบื้องหลัง
+    lv_scr_load(objects.main);
+    
+    // บังคับดับจอทันทีหลังจากรีเซ็ตหน้าจอเสร็จ
+    set_screen_sleep(true);
+    
     is_processing = false;
 }
 
@@ -78,7 +82,7 @@ void password_check_event_handler(lv_event_t *e)
             lv_textarea_set_password_mode(objects.text_p, false);
             lv_textarea_set_text(objects.text_p, "PASS");
 
-            // สั่งปลดล็อกกล่องของ User นั้นๆ
+            // ปลดล็อกกล่อง
             unlock_box(selected_user);
 
             // ส่ง LINE แจ้งเตือน
@@ -88,6 +92,7 @@ void password_check_event_handler(lv_event_t *e)
                 sendLine(uid_user2, "🔓 กล่องเปิดแล้ว: นำพัสดุออกเรียบร้อย (User 2)");
             }
 
+            // แสดงคำว่า PASS 1.5 วินาที แล้ว timer_success_cb จะพาไปหน้าหลักและดับจอดำสนิท
             lv_timer_t *t = lv_timer_create(timer_success_cb, 1500, NULL);
             lv_timer_set_repeat_count(t, 1);
             selected_user = 0;
@@ -98,7 +103,6 @@ void password_check_event_handler(lv_event_t *e)
             lv_textarea_set_password_mode(objects.text_p, false);
             lv_textarea_set_text(objects.text_p, "WRONG");
 
-            // แจ้งเตือนเมื่อกรอกรหัสผิด
             if (selected_user == 1) {
                 sendLine(uid_user1, "⚠️ มีผู้พยายามใส่รหัสผ่านกล่องรับพัสดุของคุณ (EM01) ไม่ถูกต้อง!");
             } else if (selected_user == 2) {
@@ -110,7 +114,3 @@ void password_check_event_handler(lv_event_t *e)
         }
     }
 }
-
-#ifdef __cplusplus
-}
-#endif

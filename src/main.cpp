@@ -2,6 +2,8 @@
 //โค้ด main.cpp
 
 #include "ui.h"
+#include "screens.h"
+#include "structs.h"
 #include <Arduino_GFX_Library.h>
 #include "event.h"
 #include "box.h"
@@ -126,12 +128,14 @@ void setup()
     backlight_sensor_init();
 }
 
+extern bool is_full_brightness; // ดึงสถานะจอมาจาก box.cpp
+
 void loop()
 {
     lv_timer_handler();
 
-    check_box();        // ตรวจจับพัสดุและสั่งล็อกกล่องอัตโนมัติ
-    check_proximity();  // ตรวจวัดระยะคนเดินเข้าใกล้เพื่อเปิด/ดับหน้าจอ
+    check_box();
+    check_proximity();
 
 #ifdef CANVAS
     gfx->flush();

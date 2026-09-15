@@ -16,5 +16,6 @@ void check_proximity();
 void set_backlight(uint8_t brightness);
 void set_backlight_percent(uint8_t percent);
 
+extern bool is_full_brightness;
 
 #endif
