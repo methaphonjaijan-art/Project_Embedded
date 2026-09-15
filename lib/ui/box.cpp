@@ -1,14 +1,13 @@
+//ไฟล์ box.cpp
+
+
 #include "box.h"
+#include <Arduino_GFX_Library.h>
+#include <lvgl.h>
 #include <ESP32Servo.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
-
-#define INVERT_BACKLIGHT 0
-
-// กำหนดระดับความสว่าง
-#define BRIGHTNESS_DIM_PERCENT   40   // ระดับหรี่แสง (สว่างพอเห็น ไม่ดับสนิท)
-#define BRIGHTNESS_FULL_PERCENT  100  // ระดับสว่างเต็มที่
 
 // --- กำหนดขาพินอุปกรณ์กล่อง ---
 #define IR1_PIN     33
@@ -20,16 +19,19 @@
 #define TRIG_PIN        26
 #define ECHO_PIN        35
 #define BL_PIN          32
-#define BL_PWM_CHANNEL  6
-#define BL_FREQ         5000
-#define BL_RESOLUTION   8
 #define DETECT_DIST_CM  50
 
-
-// --- LINE Messaging API ---
+// --- ข้อมูล LINE Messaging API ---
 const char* channelToken = "nZYIOssTZpFn+/fZ38wnzEeJuEfPqBKukrG/CTLW7UocQQP5yNLY+JE1PTogHqPpBcC1OnWKMFHXlIe0msUn7h+pzNjxNe6IvePpWHG6aoztrNhYi3Mgs1JUYR/0AYBL64mrijAlMaGMLal8FI1hLAdB04t89/1O/w1cDnyilFU=";
 const char* user1_id = "U661b5c343d7ab14120820bf92e9867d3";
 const char* user2_id = "Uc97ac7d0267eb92af50daffac3402b83";
+
+// โครงสร้างคิวส่ง LINE
+struct LineMsg {
+    char to[40];
+    char text[128];
+};
+static QueueHandle_t lineQueue = NULL;
 
 Servo servo1;
 Servo servo2;
@@ -39,64 +41,108 @@ bool box2_locked = false;
 
 static unsigned long ir1_start = 0;
 static bool ir1_waiting = false;
+static unsigned long ir1_unseen_start = 0;
 
 static unsigned long ir2_start = 0;
 static bool ir2_waiting = false;
+static unsigned long ir2_unseen_start = 0;
 
 static unsigned long last_detected_time = 0;
-static bool is_dimmed = false;
+static bool is_full_brightness = false;
 static unsigned long last_ping_time = 0;
 
-// ฟังก์ชันส่งข้อความ LINE แบบทำงานตรง (Direct Sync Push)
-void sendLineDirect(const char* targetUid, String messageText)
+// อ้างอิง gfx จาก main.cpp
+extern Arduino_GFX *gfx;
+
+static lv_obj_t *main_screen = NULL;  // ตัวแปรจำหน้าจอหลักของ UI
+static lv_obj_t *blank_screen = NULL; // หน้าจอสีดำสำหรับโหมด Sleep
+
+void set_screen_sleep(bool sleep)
 {
-    Serial.printf("[LINE] Preparing to send to: %s\n", targetUid);
-
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("[LINE] Wi-Fi lost! Attempting to reconnect...");
-        WiFi.reconnect();
-        unsigned long start_reconnect = millis();
-        while (WiFi.status() != WL_CONNECTED && (millis() - start_reconnect < 4000)) {
-            delay(100);
-        }
+    // จำหน้าจอ UI หลักไว้ตอนที่ถูกเรียกครั้งแรก
+    if (main_screen == NULL) {
+        main_screen = lv_scr_act();
     }
 
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("[LINE FAILED] Wi-Fi is NOT connected. Skipping LINE notification.");
-        return;
+    // สร้างหน้าจอดำสนิทเตรียมไว้ 1 หน้าจอ
+    if (blank_screen == NULL) {
+        blank_screen = lv_obj_create(NULL);
+        lv_obj_set_style_bg_color(blank_screen, lv_color_black(), 0);
+        lv_obj_set_style_bg_opa(blank_screen, LV_OPA_COVER, 0);
     }
 
-    WiFiClientSecure client;
-    client.setInsecure(); // ข้ามการตรวจสอบใบรับรอง SSL
-    client.setTimeout(8000);
-
-    HTTPClient http;
-    if (http.begin(client, "https://api.line.me/v2/bot/message/push"))
-    {
-        http.addHeader("Content-Type", "application/json; charset=utf-8");
-        http.addHeader("Authorization", String("Bearer ") + channelToken);
-
-        String payload = "{\"to\":\"" + String(targetUid) + "\",\"messages\":[{\"type\":\"text\",\"text\":\"" + messageText + "\"}]}";
-
-        Serial.println("[LINE] Sending HTTP POST request...");
-        int responseCode = http.POST(payload);
-
-        if (responseCode == 200) {
-            Serial.printf("[LINE SUCCESS] Message successfully delivered to %s\n", targetUid);
-        } else {
-            Serial.printf("[LINE ERROR] HTTP Response Code: %d\n", responseCode);
-            Serial.printf("[LINE RESPONSE] %s\n", http.getString().c_str());
-        }
-        http.end();
+    if (sleep) {
+        // สลับไปแสดงหน้าจอดำสนิททันที (UI หลักยังคงอยู่ใน RAM ไม่หาย)
+        lv_scr_load(blank_screen);
+        Serial.println("[DISPLAY] Screen Sleeping (Switched to Blank Screen)");
     } else {
-        Serial.println("[LINE ERROR] Unable to connect to Line API host.");
+        // ปลุกคอนโทรลเลอร์จอ และสลับกลับมาหน้าจอ UI หลัก
+        gfx->displayOn();
+        if (main_screen != NULL) {
+            lv_scr_load(main_screen);
+        }
+        Serial.println("[DISPLAY] Screen Woken Up (UI Restored)");
     }
 }
 
-// ฟังก์ชันรองรับการเรียกภายนอก
+// Background Task สำหรับส่ง LINE ป้องกันลูปสะดุดและ Handshake ล่ม
+void lineTask(void *pvParameters)
+{
+    LineMsg msg;
+    while (1)
+    {
+        if (xQueueReceive(lineQueue, &msg, portMAX_DELAY) == pdTRUE)
+        {
+            if (WiFi.status() != WL_CONNECTED) {
+                Serial.println("[LINE] WiFi not connected. Trying to reconnect...");
+                WiFi.reconnect();
+                int retry = 0;
+                while (WiFi.status() != WL_CONNECTED && retry < 10) {
+                    vTaskDelay(pdMS_TO_TICKS(500));
+                    retry++;
+                }
+            }
+
+            if (WiFi.status() == WL_CONNECTED) {
+                WiFiClientSecure client;
+                client.setInsecure();
+                client.setTimeout(6000);
+
+                HTTPClient http;
+                if (http.begin(client, "https://api.line.me/v2/bot/message/push"))
+                {
+                    http.addHeader("Content-Type", "application/json; charset=utf-8");
+                    http.addHeader("Authorization", String("Bearer ") + channelToken);
+
+                    String payload = "{\"to\":\"" + String(msg.to) + "\",\"messages\":[{\"type\":\"text\",\"text\":\"" + String(msg.text) + "\"}]}";
+                    int code = http.POST(payload);
+
+                    if (code == 200) {
+                        Serial.printf("[LINE OK] Sent to %s\n", msg.to);
+                    } else {
+                        Serial.printf("[LINE FAIL] HTTP Code: %d\n", code);
+                        Serial.printf("[LINE DETAIL] %s\n", http.getString().c_str());
+                    }
+                    http.end();
+                }
+            } else {
+                Serial.println("[LINE FAIL] WiFi reconnect timeout!");
+            }
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+    }
+}
+
 void sendLine(const char* targetUid, String messageText)
 {
-    sendLineDirect(targetUid, messageText);
+    if (lineQueue == NULL) return;
+    LineMsg msg;
+    strncpy(msg.to, targetUid, sizeof(msg.to) - 1);
+    msg.to[sizeof(msg.to) - 1] = '\0';
+    strncpy(msg.text, messageText.c_str(), sizeof(msg.text) - 1);
+    msg.text[sizeof(msg.text) - 1] = '\0';
+
+    xQueueSend(lineQueue, &msg, pdMS_TO_TICKS(50));
 }
 
 bool check_package(int box_number)
@@ -113,20 +159,16 @@ void lock_box(int box_number)
         servo1.write(0);
         box1_locked = true;
         ir1_waiting = false;
-        Serial.println("[BOX 1] Servo locked (0°)");
-        
-        // ส่ง LINE แจ้งเตือน User 1 ทันทีเมื่อปิดประตูกล่อง
-        sendLineDirect(user1_id, "📦 EM01 : มีพัสดุมาส่งที่กล่องของคุณ กล่องปิดล็อกเรียบร้อย!");
+        Serial.println("\n>>> [BOX 1] LOCKED (Servo 0°) <<<");
+        sendLine(user1_id, "📦 EM01 : มีพัสดุมาส่งที่กล่องของคุณ กล่องปิดล็อกเรียบร้อย!");
     }
     else if (box_number == 2)
     {
         servo2.write(0);
         box2_locked = true;
         ir2_waiting = false;
-        Serial.println("[BOX 2] Servo locked (0°)");
-        
-        // ส่ง LINE แจ้งเตือน User 2 ทันทีเมื่อปิดประตูกล่อง
-        sendLineDirect(user2_id, "📦 EM02 : มีพัสดุมาส่งที่กล่องของคุณ กล่องปิดล็อกเรียบร้อย!");
+        Serial.println("\n>>> [BOX 2] LOCKED (Servo 0°) <<<");
+        sendLine(user2_id, "📦 EM02 : มีพัสดุมาส่งที่กล่องของคุณ กล่องปิดล็อกเรียบร้อย!");
     }
 }
 
@@ -153,6 +195,9 @@ void box_init()
     pinMode(IR1_PIN, INPUT_PULLUP);
     pinMode(IR2_PIN, INPUT);
 
+    lineQueue = xQueueCreate(5, sizeof(LineMsg));
+    xTaskCreatePinnedToCore(lineTask, "LineTask", 8192, NULL, 1, NULL, 0);
+
     ESP32PWM::allocateTimer(0);
     ESP32PWM::allocateTimer(1);
 
@@ -167,96 +212,92 @@ void box_init()
     box1_locked = false;
     box2_locked = false;
 
-    Serial.println("[BOX] Dual Box System Initialized (Unlocked & Standby)");
+    Serial.println("[BOX] Dual Box Ready (Both Open)");
 }
 
 void check_box()
 {
-    // ตรวจสอบกล่องที่ 1
+    // จัดการกล่อง 1
     if (!box1_locked)
     {
         if (check_package(1))
         {
+            ir1_unseen_start = 0;
             if (!ir1_waiting)
             {
                 ir1_waiting = true;
                 ir1_start = millis();
-                Serial.println("[BOX 1] Parcel detected! Locking in 10s...");
+                Serial.println("[BOX 1] Parcel detected! Closing in 10s...");
             }
             else if (millis() - ir1_start >= 10000)
             {
                 lock_box(1);
             }
         }
-        else
+        else if (ir1_waiting)
         {
-            if (ir1_waiting) {
+            if (ir1_unseen_start == 0) ir1_unseen_start = millis();
+            if (millis() - ir1_unseen_start >= 1000)
+            {
                 ir1_waiting = false;
-                Serial.println("[BOX 1] Parcel removed. Timer reset.");
+                ir1_unseen_start = 0;
+                Serial.println("[BOX 1] Parcel removed -> Reset Timer");
             }
         }
     }
 
-    // ตรวจสอบกล่องที่ 2
+    // จัดการกล่อง 2
     if (!box2_locked)
     {
         if (check_package(2))
         {
+            ir2_unseen_start = 0;
             if (!ir2_waiting)
             {
                 ir2_waiting = true;
                 ir2_start = millis();
-                Serial.println("[BOX 2] Parcel detected! Locking in 10s...");
+                Serial.println("[BOX 2] Parcel detected! Closing in 10s...");
             }
             else if (millis() - ir2_start >= 10000)
             {
                 lock_box(2);
             }
         }
-        else
+        else if (ir2_waiting)
         {
-            if (ir2_waiting) {
+            if (ir2_unseen_start == 0) ir2_unseen_start = millis();
+            if (millis() - ir2_unseen_start >= 1000)
+            {
                 ir2_waiting = false;
-                Serial.println("[BOX 2] Parcel removed. Timer reset.");
+                ir2_unseen_start = 0;
+                Serial.println("[BOX 2] Parcel removed -> Reset Timer");
             }
         }
     }
 }
 
-// --- ฟังก์ชัน Backlight และเซนเซอร์วัดระยะ ---
-void set_backlight_percent(uint8_t percent)
-{
-    if (percent > 100) percent = 100;
-    
-#if INVERT_BACKLIGHT
-    uint32_t duty = (255 * (100 - percent)) / 100;
-#else
-    uint32_t duty = (255 * percent) / 100;
-#endif
-
-    ledcWrite(BL_PWM_CHANNEL, duty);
-}
-
+// --- ควบคุมการเริ่มต้นหน้าจอและ Ultrasonic ---
 void backlight_sensor_init()
 {
     pinMode(TRIG_PIN, OUTPUT);
+    digitalWrite(TRIG_PIN, LOW);
     pinMode(ECHO_PIN, INPUT);
 
-    pinMode(BL_PIN, OUTPUT);
-    ledcSetup(BL_PWM_CHANNEL, BL_FREQ, BL_RESOLUTION);
-    ledcAttachPin(BL_PIN, BL_PWM_CHANNEL);
-    
-    // บังคับหรี่แสงทันทีที่เริ่มทำงาน
-    set_backlight_percent(BRIGHTNESS_DIM_PERCENT);
-    is_dimmed = true;
-    last_detected_time = millis();
-    Serial.println("[BL] Initialized: Screen Dimmed (Standby)");
+    // ประมวลผลรอบแรกของ LVGL ให้เฟรมแรกเสร็จสมบูรณ์
+    lv_timer_handler();
+
+    // ดับสนิทตั้งแต่เปิดเครื่องด้วยม่านดำ
+    set_screen_sleep(true);
+    is_full_brightness = false;
+    last_detected_time = 0;
+
+    Serial.println("[BL] Initialized: Black Standby Screen (Covered)");
 }
 
 static long read_ultrasonic_distance()
 {
     digitalWrite(TRIG_PIN, LOW);
-    delayMicroseconds(2);
+    delayMicroseconds(4);
     digitalWrite(TRIG_PIN, HIGH);
     delayMicroseconds(10);
     digitalWrite(TRIG_PIN, LOW);
@@ -264,48 +305,50 @@ static long read_ultrasonic_distance()
     long duration = pulseIn(ECHO_PIN, HIGH, 25000);
     if (duration == 0) return 999;
 
-    return duration * 0.034 / 2;
+    return (long)(duration * 0.034 / 2);
 }
 
 void check_proximity()
 {   
-    // เงื่อนไขเด็ดขาด: ถ้ากล่องเปิดอยู่ทั้งสองกล่อง จอต้องหรี่เท่านั้น
+    // เงื่อนไข 1: กล่องยังเปิดอยู่ทั้งคู่ บังคับม่านดำปิดเสมอ และไม่รัน Ultrasonic
     if (!box1_locked && !box2_locked)
     {
-        if (!is_dimmed)
+        if (is_full_brightness)
         {
-            set_backlight_percent(BRIGHTNESS_DIM_PERCENT);
-            is_dimmed = true;
-            Serial.println("[BL] Both boxes open -> Force Dimmed");
+            set_screen_sleep(true);
+            is_full_brightness = false;
+            Serial.println("[DISPLAY] Both boxes open -> Force Screen Sleep");
         }
-        return; // ตัดทิ้งทันที ไม่ให้อ่าน Ultrasonic เด็ดขาด
+        return;
     }
 
-    // มีกล่องล็อกแล้วอย่างน้อย 1 กล่อง -> จึงเริ่มวัดระยะคนเพื่อเร่งไฟ
+    // เงื่อนไข 2: มีกล่องล็อกแล้วอย่างน้อย 1 กล่อง เริ่มตรวจจับคนเดินเข้าใกล้
     if (millis() - last_ping_time >= 200)
     {
         last_ping_time = millis();
         long distance = read_ultrasonic_distance();
 
-        // มีคนเดินเข้ามาใกล้กล่องที่ล็อกอยู่ (ระยะ <= 50 ซม.) -> สว่าง 100%
-        if (distance > 0 && distance <= DETECT_DIST_CM)
+        Serial.printf("[SONAR] Measured: %ld cm\n", distance);
+
+        // อยู่ในระยะ 5 ถึง 50 ซม. ปลดม่านดำแสดงผล UI
+        if (distance >= 5 && distance <= DETECT_DIST_CM)
         {
             last_detected_time = millis();
-            if (is_dimmed)
+            if (!is_full_brightness)
             {
-                set_backlight_percent(BRIGHTNESS_FULL_PERCENT);
-                is_dimmed = false;
-                Serial.printf("[BL] Box Locked & Person detected (%ld cm) -> Screen 100%%\n", distance);
+                set_screen_sleep(false);
+                is_full_brightness = true;
+                Serial.printf(">>> [PROXIMITY] Person detected at %ld cm -> Screen ON <<<\n", distance);
             }
         }
         else
         {
-            // พ้นระยะเกิน 5 วินาที -> หรี่กลับไปที่ระดับเดิม
-            if (!is_dimmed && (millis() - last_detected_time >= 5000))
+            // เดินออกห่างเกิน 5 วินาที ดับหน้าจอกลับเป็นสีดำ
+            if (is_full_brightness && (millis() - last_detected_time >= 5000))
             {
-                set_backlight_percent(BRIGHTNESS_DIM_PERCENT);
-                is_dimmed = true;
-                Serial.println("[BL] Out of range -> Screen Dimmed");
+                set_screen_sleep(true);
+                is_full_brightness = false;
+                Serial.println("[PROXIMITY] Person left -> Screen OFF (Blackout)");
             }
         }
     }

@@ -1,3 +1,6 @@
+
+//โค้ด main.cpp
+
 #include "ui.h"
 #include <Arduino_GFX_Library.h>
 #include "event.h"
@@ -63,9 +66,6 @@ void setup()
     }
     gfx->fillScreen(BLACK);
 
-    // เริ่มต้นระบบปรับแสงจอ (ตั้งต้นหรี่ 20%) และเซนเซอร์วัดระยะ
-    backlight_sensor_init();
-
     touch_init(gfx->width(), gfx->height(), gfx->getRotation());
     lv_init();
 
@@ -99,18 +99,18 @@ void setup()
     lv_obj_add_event_cb(objects.back, back_btn_event_handler, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(objects.keyboard, password_check_event_handler, LV_EVENT_READY, NULL);
 
-    // เริ่มต้นระบบกล่องพัสดุ (Servo 2 ตัว + IR 2 ตัว + FreeRTOS LINE Task)
+    // 1. เริ่มต้นระบบกล่องพัสดุและเซอร์โว
     box_init();
 
-    // เชื่อมต่อ Wi-Fi และรอยืนยันสถานะเพื่อความเสถียรในการส่ง LINE
+    // 2. เชื่อมต่อ Wi-Fi
     WiFi.mode(WIFI_STA);
     WiFi.setTxPower(WIFI_POWER_15dBm);
     WiFi.begin(ssid, password);
     Serial.print("Connecting to Wi-Fi");
 
     int retry = 0;
-    while (WiFi.status() != WL_CONNECTED && retry < 20) {
-        delay(500);
+    while (WiFi.status() != WL_CONNECTED && retry < 15) {
+        delay(400);
         Serial.print(".");
         retry++;
     }
@@ -119,16 +119,19 @@ void setup()
         Serial.println("\n[WiFi] Connected successfully!");
         Serial.printf("[WiFi] IP Address: %s\n", WiFi.localIP().toString().c_str());
     } else {
-        Serial.println("\n[WiFi] Connection timeout. Will keep retrying in background.");
+        Serial.println("\n[WiFi] Connection timeout. Continuing in background.");
     }
+
+    // 3. เริ่มต้นม่านดำและเซนเซอร์วัดระยะ (เรียกท้ายสุดหลัง UI โหลดเสร็จ)
+    backlight_sensor_init();
 }
 
 void loop()
 {
     lv_timer_handler();
 
-    check_box();        // ตรวจพัสดุและสั่งล็อกอัตโนมัติ
-    check_proximity();  // ตรวจวัดระยะคนเดินเข้าใกล้เพื่อหรี่/เปิดไฟจอ
+    check_box();        // ตรวจจับพัสดุและสั่งล็อกกล่องอัตโนมัติ
+    check_proximity();  // ตรวจวัดระยะคนเดินเข้าใกล้เพื่อเปิด/ดับหน้าจอ
 
 #ifdef CANVAS
     gfx->flush();
